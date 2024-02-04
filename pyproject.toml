@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "cheney-gc"
+version = "0.1.0"
+description = "Tutorial on Cheney-style Garbage Collection"
+authors = ["Stephen Leach <sfkleach@gmail.com>"]
+readme = "README.md"
+packages = [{include = "cheney_gc"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.8.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
