@@ -113,10 +113,14 @@ class Heap:
         if ok:
             offset = self._scan_queue
             length = self._heap[offset + 1].value()
-            self._scan_queue = offset + 2 + length
-            for i in range(length):
-                delta = offset + 2 + i
-                self._heap[delta] = gc.forwardIfPointer(self._heap[delta])
+            gc.logScanNextObject(offset, length)
+            with gc._glog:
+                self._scan_queue = offset + 2 + length
+                for i in range(length):
+                    delta = offset + 2 + i
+                    self._heap[delta] = gc.forwardIfPointer(self._heap[delta])
+        else:
+            gc.logScanQueueEmpty()
         return ok
 
     def newHeap(self):
@@ -176,19 +180,78 @@ class Heap:
         self._tip += 1
 
 
+class GCEventLogger:
+
+    def __init__(self):
+        self._level = 0
+        self._scan_count = 0
+
+    def __enter__(self):
+        self._level += 1
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._level -= 1
+
+    def logStart(self):
+        print(f"GARBAGE COLLECTION")
+        self._level += 1
+
+    def tab(self):
+        print("  " * self._level, end="")
+
+    def logVisitRegister(self, name, value):
+        self.tab()
+        print(f"Register {name} has pointer: {value}")
+
+    def logVisitRoots(self):
+        self.tab()
+        print(f"INITIAL PHASE: Visit roots")
+
+    def logScanPhase(self):
+        self.tab()
+        print(f"MAIN PHASE: Scanning objects in the scan-queue (new-heap)")
+
+    def logForwardObject(self, pointer, new_pointer):
+        self.tab()
+        print(f"Object copied to end of scan_queue: {pointer} -> {new_pointer}")
+
+    def logAlreadyForwarded(self, pointer, new_pointer):
+        self.tab()
+        print(f"Already forwarded: {pointer} -> {new_pointer}")
+
+    def logScanNextObject(self, offset, length):
+        self.tab()
+        self._scan_count += 1
+        print(f"{self._scan_count}: Scanning object at {offset} with length {length}")
+
+    def logScanQueueEmpty(self):
+        self.tab()
+        print(f"#: Scan queue empty")
+
+    def logFinish(self):
+        print()
+
+
 class GarbageCollector:
 
     def __init__(self, registers, value_stack, heap):
+        self._glog = GCEventLogger()
         self._registers = registers
         self._value_stack = value_stack
         self._heap = heap
         self._new_heap = heap.newHeap()
 
+    def logScanNextObject(self, offset, length):
+        self._glog.logScanNextObject(offset, length)
+
+    def logScanQueueEmpty(self):
+        self._glog.logScanQueueEmpty()
+
     def _visitRegisters(self):
         for k, v in self._registers.items():
-            print(f"Check register {k} with value {v}")
             if isinstance(v, Pointer):
-               self._registers[k] = self.forwardIfPointer(v)
+                self._glog.logVisitRegister(k, v)
+                self._registers[k] = self.forwardIfPointer(v)
 
     def _visitValueStack(self):
         for i, x in enumerate(self._value_stack):
@@ -202,16 +265,26 @@ class GarbageCollector:
         p = pointer.dereference()
         if isinstance(p, Pointer) and p.isInHeap(self._new_heap):
             # Already forwarded.
+            self._glog.logAlreadyForwarded(pointer, p)
             return p
         else:
             # Need to forward.
-            return pointer.update(self._heap.cloneToTargetHeap(pointer, self._new_heap))
+            new_pointer = self._heap.cloneToTargetHeap(pointer, self._new_heap)
+            self._glog.logForwardObject(pointer, new_pointer)
+            return pointer.update(new_pointer)
 
     def collectGarbage(self):
-        self._visitRegisters()
-        self._visitValueStack()
-        while self._new_heap.gcScanNextObject(self):
-            pass
+        self._glog.logStart()
+        with self._glog:
+            self._glog.logVisitRoots()
+            with self._glog:
+                self._visitRegisters()
+                self._visitValueStack()
+            self._glog.logScanPhase()
+            with self._glog:
+                while self._new_heap.gcScanNextObject(self):
+                    pass
+        self._glog.logFinish()
         return self._new_heap
 
 
@@ -223,11 +296,10 @@ class Machine:
         self._value_stack = []
 
     def garbageCollect(self, msg):
-        print(f"{msg}...")
         self._heap = GarbageCollector(self._registers, self._value_stack, self._heap).collectGarbage()
 
     def show(self, msg):
-        print(msg)
+        print(f"Machine state: {msg}")
         print("  Registers")
         for k, v in self._registers.items():
             print(f"    {k}: {v}")
@@ -235,6 +307,7 @@ class Machine:
         for i in reversed(range(len(self._value_stack))):
             print(f"    {i}: {self._value_stack[i]}")
         self._heap.show()
+        print()
 
     def LOAD(self, register, value):
         self._registers[register] = Data(value)
@@ -323,7 +396,6 @@ def scenario2():
     mc.STACK_DELTA('L')
     mc.NEW_OBJECT('L', 'R')
     for i in range(60):
-        print(i)
         mc.CLONE('R', 'R')
     mc.show("Before GC")
     mc.garbageCollect("Manual GC")
