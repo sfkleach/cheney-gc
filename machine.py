@@ -22,6 +22,9 @@ values and have this format:
 import argparse
 from typing import List
 
+from null import Null
+from gceventlogger import GCEventLogger
+
 class OurException(Exception):
     """Used to signal a runtime error in the machine."""
     pass
@@ -109,14 +112,19 @@ class Heap:
         return value
 
     def gcScanNextObject(self, gc):
+        gctrace = gc.gctrace()
         ok = self._scan_queue < self._tip
         if ok:
             offset = self._scan_queue
             length = self._heap[offset + 1].value()
-            self._scan_queue = offset + 2 + length
-            for i in range(length):
-                delta = offset + 2 + i
-                self._heap[delta] = gc.forwardIfPointer(self._heap[delta])
+            gctrace.logScanNextObject(offset, length)
+            with gctrace:
+                self._scan_queue = offset + 2 + length
+                for i in range(length):
+                    delta = offset + 2 + i
+                    self._heap[delta] = gc.forwardIfPointer(self._heap[delta])
+        else:
+            gctrace.logScanQueueEmpty()
         return ok
 
     def newHeap(self):
@@ -175,20 +183,23 @@ class Heap:
         self._heap[self._tip] = value
         self._tip += 1
 
-
 class GarbageCollector:
 
-    def __init__(self, registers, value_stack, heap):
+    def __init__(self, registers, value_stack, heap, gctrace):
         self._registers = registers
         self._value_stack = value_stack
         self._heap = heap
         self._new_heap = heap.newHeap()
+        self._gctrace = gctrace
+
+    def gctrace(self):
+        return self._gctrace
 
     def _visitRegisters(self):
         for k, v in self._registers.items():
-            print(f"Check register {k} with value {v}")
             if isinstance(v, Pointer):
-               self._registers[k] = self.forwardIfPointer(v)
+                self._gctrace.logVisitRegister(k, v)
+                self._registers[k] = self.forwardIfPointer(v)
 
     def _visitValueStack(self):
         for i, x in enumerate(self._value_stack):
@@ -202,32 +213,39 @@ class GarbageCollector:
         p = pointer.dereference()
         if isinstance(p, Pointer) and p.isInHeap(self._new_heap):
             # Already forwarded.
+            self._gctrace.logAlreadyForwarded(pointer, p)
             return p
         else:
             # Need to forward.
-            return pointer.update(self._heap.cloneToTargetHeap(pointer, self._new_heap))
+            new_pointer = self._heap.cloneToTargetHeap(pointer, self._new_heap)
+            self._gctrace.logForwardObject(pointer, new_pointer)
+            return pointer.update(new_pointer)
 
     def collectGarbage(self):
-        self._visitRegisters()
-        self._visitValueStack()
-        while self._new_heap.gcScanNextObject(self):
-            pass
+        with self._gctrace("GARBAGE COLLECTION"):
+            with self._gctrace("INITIAL PHASE: Visit roots"):
+                self._visitRegisters()
+                self._visitValueStack()
+            with self._gctrace("MAIN PHASE: Scanning objects in the scan-queue (new-heap)"):
+                while self._new_heap.gcScanNextObject(self):
+                    pass
+        self._gctrace.logFinish()
         return self._new_heap
 
 
 class Machine:
 
-    def __init__(self, procedure):
+    def __init__(self, gctrace: GCEventLogger | Null):
         self._registers = {}
         self._heap = Heap(100)
         self._value_stack = []
+        self._gctrace = gctrace
 
     def garbageCollect(self, msg):
-        print(f"{msg}...")
-        self._heap = GarbageCollector(self._registers, self._value_stack, self._heap).collectGarbage()
+        self._heap = GarbageCollector(self._registers, self._value_stack, self._heap, self._gctrace).collectGarbage()
 
     def show(self, msg):
-        print(msg)
+        print(f"Machine state: {msg}")
         print("  Registers")
         for k, v in self._registers.items():
             print(f"    {k}: {v}")
@@ -235,6 +253,7 @@ class Machine:
         for i in reversed(range(len(self._value_stack))):
             print(f"    {i}: {self._value_stack[i]}")
         self._heap.show()
+        print()
 
     def LOAD(self, register, value):
         self._registers[register] = Data(value)
@@ -286,8 +305,7 @@ class Machine:
             else:
                 raise OurException("Out of memory")
 
-def scenario1():
-    mc = Machine(None)
+def scenario1(mc):
     mc.LOAD('A', 10)
     mc.LOAD('B', 20)
     mc.LOAD('C', 30)
@@ -311,8 +329,7 @@ def scenario1():
     mc.garbageCollect("Manual GC")
     mc.show("After GC")
 
-def scenario2():
-    mc = Machine(None)
+def scenario2(mc):
     mc.STACK_LENGTH('L')
     mc.LOAD('A', 11)
     mc.PUSH('A')
@@ -323,22 +340,24 @@ def scenario2():
     mc.STACK_DELTA('L')
     mc.NEW_OBJECT('L', 'R')
     for i in range(60):
-        print(i)
         mc.CLONE('R', 'R')
     mc.show("Before GC")
     mc.garbageCollect("Manual GC")
     mc.show("After GC")
 
+SCENARIOS = [scenario1, scenario2]
+
 def main():
     argparser = argparse.ArgumentParser(description="Cheney-style garbage collector")
-    argparser.add_argument("--scenario", type=int, help="Scenario to run")
+    argparser.add_argument("--scenario", type=int, default=1, help="Scenario to run")
+    argparser.add_argument("--gctrace", action='store_true', help="Trace the garbage collection process")
     args = argparser.parse_args()
-    if args.scenario == 1:
-        scenario1()
-    elif args.scenario == 2:
-        scenario2()
-    else:
-        print("No scenario selected")
+    gctrace = GCEventLogger() if args.gctrace else Null()
+    try:
+        scenario = SCENARIOS[args.scenario - 1]
+        scenario(Machine(gctrace))
+    except IndexError:
+        print("Invalid scenario selected")
 
 if __name__ == "__main__":
     main()
