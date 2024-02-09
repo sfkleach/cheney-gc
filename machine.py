@@ -12,9 +12,6 @@ Finally the abstract machine also has a heap. Fundamentally this is a large
 array of Values that are grouped into objects. The objects are vectors of
 values and have this format:
 
-    KEY a 64-bit data field that describes the type of the object. In this
-        simple machine this is not used in normal processing but is temporarily
-        used by the garbage collector to mark the object as relocated.
     LENGTH a 64-bit unsigned number that describes the length of the object
     DATA a sequence of values that represent the data of the object.
 """
@@ -83,19 +80,9 @@ class Data( Value ):
     def __repr__(self):
         return f"Data({self._value})"
 
-class Key( Value ):
-    """
-    This class represents a key value. In a more complex machine it would be
-    used to describe the type of the object. In this simple machine it just a
-    placeholder. During garbage collection it is overwritten with a relocation
-    pointer.
-    """
-
-    def __init__(self):
-        pass
-
-    def __repr__(self):
-        return "Key()"
+LENGTH_OFFSET = 0
+ELEMENTS_OFFSET = 1
+OVERHEAD = 1
 
 class Heap:
 
@@ -116,7 +103,7 @@ class Heap:
         ok = self._scan_queue < self._tip
         if ok:
             offset = self._scan_queue
-            length = self._heap[offset + 1].value()
+            length = self._heap[offset + LENGTH_OFFSET].value()
             gctrace.logScanNextObject(offset, length)
             with gctrace:
                 self._scan_queue = offset + 2 + length
@@ -134,11 +121,11 @@ class Heap:
         print(f"  Heap (tip = {self._tip})")
         offset = 0
         while offset < self._tip:
-            key = self._heap[offset]
-            length = self._heap[offset + 1].value()
-            data = self._heap[offset + 2: offset + 2 + length]
-            print(f"    {offset}: {key}, {length}, {data}")
-            offset += 2 + length
+            start = self._heap[offset]
+            length = self._heap[offset + LENGTH_OFFSET].value()
+            data = self._heap[offset + ELEMENTS_OFFSET: offset + 2 + length]
+            print(f"    {offset}: {length}, {data}")
+            offset += OVERHEAD + length
 
     def checkCapacity(self, length):
         if self._tip + length > len(self._heap):
@@ -151,9 +138,8 @@ class Heap:
         return Pointer(self, self._tip)
 
     def newOject(self, length, stack):
-        self.checkCapacity(length + 2)
+        self.checkCapacity(length + OVERHEAD)
         result = self.tipPointer()
-        self.add(Key())
         self.add(Data(length))
         self._heap[self._tip: self._tip + length] = stack[-length:]
         del stack[-length:]
@@ -162,20 +148,19 @@ class Heap:
 
     def explode(self, pointer: Pointer, stack: List[Value]):
         offset = pointer.offset()
-        length = self._heap[offset + 1].value()
-        stack.extend(self._heap[offset + 2: offset + 2 + length])
+        length = self._heap[offset + LENGTH_OFFSET].value()
+        stack.extend(self._heap[offset + ELEMENTS_OFFSET: offset + ELEMENTS_OFFSET + length])
 
     def clone(self, pointer):
         return self.cloneToTargetHeap(pointer, self)
 
     def cloneToTargetHeap(self, pointer: Pointer, target_heap: 'Heap'):
         offset = pointer.offset()
-        length = self._heap[offset + 1].value()
-        target_heap.checkCapacity(length + 2)
+        length = self._heap[offset + LENGTH_OFFSET].value()
+        target_heap.checkCapacity(length + OVERHEAD)
         result = target_heap.tipPointer()
-        target_heap.add(Key())
         target_heap.add(Data(length))
-        for i in range(offset + 2, offset + 2 + length):
+        for i in range(offset + ELEMENTS_OFFSET, offset + ELEMENTS_OFFSET + length):
             target_heap.add(self._heap[i])
         return result
 
@@ -289,10 +274,10 @@ class Machine:
         self._heap.explode(self._registers[obj_register], self._value_stack)
 
     def FIELD(self, obj_register, index, value_register):
-        length = self._heap.get(self._registers[obj_register].offset() + 1).value()
+        length = self._heap.get(self._registers[obj_register].offset() + LENGTH_OFFSET).value()
         if index < 0 or index >= length:
             raise OurException("Index out of range")
-        offset = self._registers[obj_register].offset() + 2 + index
+        offset = self._registers[obj_register].offset() + ELEMENTS_OFFSET + index
         self._registers[value_register] = self._heap.get(offset)
 
     def CLONE(self, obj_register, clone_register, try_gc=True):
