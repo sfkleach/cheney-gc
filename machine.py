@@ -3,17 +3,18 @@ This is small program to demonstrate how Cheney-style garbage collection works.
 It employs a simple abstract machine to help visualize the process.
 
 The machine has a set of registers which are referenced by name. Each register 
-holds a 64-bit word, modelled here as a Value. 
+holds a 64-bit word, modelled here as a Word. 
 
 The machine also has a value stack which is used to store values. The stack
 is modelled as a list of Values.
 
 Finally the abstract machine also has a heap. Fundamentally this is a large
-array of Values that are grouped into objects. The objects are vectors of
+array of 64-bit word that are grouped into objects. The objects are vectors of
 values and have this format:
 
     LENGTH a 64-bit unsigned number that describes the length of the object
     DATA a sequence of values that represent the data of the object.
+
 """
 
 import argparse
@@ -30,20 +31,23 @@ class GarbageCollectionNeededException(Exception):
     """Used to signal that the heap is full and garbage collection is needed."""
     pass
 
-class Value:
+class Word:
     """
     This is the base class for all values in the machine. It is intended to
-    represent a 64-bit value. And it is used to represent both pointers and data.
+    represent a 64-bit word value. And it is used to represent both pointers and 
+    data. In practice a few bits would need to be reserved to distinguish between
+    pointers and data, but this is not implemented here.
     """
     pass
 
-class Pointer( Value ):
+class Pointer( Word ):
     """
     This class mimicks a 64-bit pointer aligned on an 8-byte boundary. It is 
-    used to represent a pointer to a location in the heap. 
+    used to represent a pointer to a location in the heap.
 
     IMPORTANT: Pointers may only point to the starting location of
-    an object in the heap.
+    an object in the heap. They are not allowed to point to the middle of an
+    object.
     """
 
     def __init__(self, heap, offset):
@@ -53,10 +57,10 @@ class Pointer( Value ):
     def isInHeap(self, heap):
         return self._heap is heap
     
-    def dereference(self) -> Value:
+    def dereference(self) -> Word:
         return self._heap.get(self._offset)
     
-    def update(self, new_value: Value):
+    def update(self, new_value: Word):
         return self._heap.put(self._offset, new_value)
 
     def offset(self):
@@ -65,7 +69,7 @@ class Pointer( Value ):
     def __repr__(self):
         return f"Pointer({self._offset})"
 
-class Data( Value ):
+class Data( Word ):
     """
     This class represents an integer data value. It is used to represent
     any value that is not a pointer.
@@ -137,7 +141,7 @@ class Heap:
     def tipPointer(self):
         return Pointer(self, self._tip)
 
-    def newOject(self, length, stack):
+    def newObject(self, length, stack):
         self.checkCapacity(length + OVERHEAD)
         result = self.tipPointer()
         self.add(Data(length))
@@ -146,7 +150,7 @@ class Heap:
         self._tip += length
         return result
 
-    def explode(self, pointer: Pointer, stack: List[Value]):
+    def explode(self, pointer: Pointer, stack: List[Word]):
         offset = pointer.offset()
         length = self._heap[offset + LENGTH_OFFSET].value()
         stack.extend(self._heap[offset + ELEMENTS_OFFSET: offset + ELEMENTS_OFFSET + length])
@@ -164,7 +168,7 @@ class Heap:
             target_heap.add(self._heap[i])
         return result
 
-    def add(self, value: Value):
+    def add(self, value: Word):
         self._heap[self._tip] = value
         self._tip += 1
 
@@ -259,7 +263,7 @@ class Machine:
     def NEW_OBJECT(self, len_register, obj_register, try_gc=True):
         try:
             length = self._registers[len_register].value()
-            self._registers[obj_register] = self._heap.newOject(length, self._value_stack)
+            self._registers[obj_register] = self._heap.newObject(length, self._value_stack)
         except GarbageCollectionNeededException:
             if try_gc:
                 self.garbageCollect("Automatic GC")
