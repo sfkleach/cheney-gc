@@ -10,16 +10,10 @@ is modelled as a list of Values.
 
 Finally the abstract machine also has a heap. Fundamentally this is a large
 array of 64-bit word that are grouped into objects. The objects are vectors of
-values and have this format:
-
-    LENGTH a 64-bit unsigned number that describes the length of the object
-    DATA a sequence of values that represent the data of the object.
-
+values.
 """
 
-import argparse
-from typing import List
-
+from typing import List, Dict
 from null import Null
 from gceventlogger import GCEventLogger
 
@@ -84,22 +78,43 @@ class Data( Word ):
     def __repr__(self):
         return f"Data({self._value})"
 
-LENGTH_OFFSET = 0
-ELEMENTS_OFFSET = 1
-OVERHEAD = 1
+
+# These constants describe the layout of the objects in the heap. In this simple
+# model the only objects that are supported are vectors of values. The layout
+# is as follows:
+#
+#     LENGTH a 64-bit unsigned number that describes the length of the object.
+#         This is at an offset of 0 from the start of the object. It constitutes
+#         an overhead of 1 word.
+#
+#     DATA a sequence of values that represent the data of the object.
+#         These start at an offset of 1 from the start of the object. The nth
+#         element of the vector is at an offset of n + 1 from the start of the 
+#         object.
+#
+# These constants simplify evolving this package into a more complicated model.        
+
+VECTOR_LENGTH_OFFSET = 0
+VECTOR_ELEMENTS_OFFSET = 1
+VECTOR_OVERHEAD = 1
 
 class Heap:
+    """
+    This class represents the heap of the abstract machine. It is a large
+    array of 64-bit words. It is used to store objects. The objects are
+    vectors of values.
+    """
 
     def __init__(self, size):
-        self._heap = [None] * size
+        self._store = [None] * size
         self._tip = 0
         self._scan_queue = 0
 
     def get(self, offset):
-        return self._heap[offset]
+        return self._store[offset]
     
     def put(self, offset, value):
-        self._heap[offset] = value
+        self._store[offset] = value
         return value
 
     def gcScanNextObject(self, gc):
@@ -107,32 +122,31 @@ class Heap:
         ok = self._scan_queue < self._tip
         if ok:
             offset = self._scan_queue
-            length = self._heap[offset + LENGTH_OFFSET].value()
+            length = self._store[offset + VECTOR_LENGTH_OFFSET].value()
             gctrace.logScanNextObject(offset, length)
             with gctrace:
-                self._scan_queue = offset + 2 + length
+                self._scan_queue = offset + VECTOR_OVERHEAD + length
                 for i in range(length):
-                    delta = offset + 2 + i
-                    self._heap[delta] = gc.forwardIfPointer(self._heap[delta])
+                    delta = offset + VECTOR_OVERHEAD + i
+                    self._store[delta] = gc.forwardIfPointer(self._store[delta])
         else:
             gctrace.logScanQueueEmpty()
         return ok
 
     def newHeap(self):
-        return Heap(len(self._heap))
+        return Heap(len(self._store))
 
     def show(self):
         print(f"  Heap (tip = {self._tip})")
         offset = 0
         while offset < self._tip:
-            start = self._heap[offset]
-            length = self._heap[offset + LENGTH_OFFSET].value()
-            data = self._heap[offset + ELEMENTS_OFFSET: offset + 2 + length]
-            print(f"    {offset}: {length}, {data}")
-            offset += OVERHEAD + length
+            length = self._store[offset + VECTOR_LENGTH_OFFSET].value()
+            data = self._store[offset + VECTOR_ELEMENTS_OFFSET: offset + VECTOR_ELEMENTS_OFFSET + length]
+            print(f"    {offset}: {data}")
+            offset += VECTOR_OVERHEAD + length
 
     def checkCapacity(self, length):
-        if self._tip + length > len(self._heap):
+        if self._tip + length > len(self._store):
             raise GarbageCollectionNeededException()
         
     def pointer(self, offset):
@@ -142,43 +156,49 @@ class Heap:
         return Pointer(self, self._tip)
 
     def newObject(self, length, stack):
-        self.checkCapacity(length + OVERHEAD)
+        # print('BEFORE', self._tip, self._store)
+        self.checkCapacity(length + VECTOR_OVERHEAD)
         result = self.tipPointer()
         self.add(Data(length))
-        self._heap[self._tip: self._tip + length] = stack[-length:]
+        self._store[self._tip: self._tip + length] = stack[-length:]
         del stack[-length:]
         self._tip += length
+        # print('AFTER', self._tip, self._store)
         return result
 
     def explode(self, pointer: Pointer, stack: List[Word]):
         offset = pointer.offset()
-        length = self._heap[offset + LENGTH_OFFSET].value()
-        stack.extend(self._heap[offset + ELEMENTS_OFFSET: offset + ELEMENTS_OFFSET + length])
+        length = self._store[offset + VECTOR_LENGTH_OFFSET].value()
+        stack.extend(self._store[offset + VECTOR_ELEMENTS_OFFSET: offset + VECTOR_ELEMENTS_OFFSET + length])
 
     def clone(self, pointer):
         return self.cloneToTargetHeap(pointer, self)
 
     def cloneToTargetHeap(self, pointer: Pointer, target_heap: 'Heap'):
         offset = pointer.offset()
-        length = self._heap[offset + LENGTH_OFFSET].value()
-        target_heap.checkCapacity(length + OVERHEAD)
+        length = self._store[offset + VECTOR_LENGTH_OFFSET].value()
+        target_heap.checkCapacity(length + VECTOR_OVERHEAD)
         result = target_heap.tipPointer()
         target_heap.add(Data(length))
-        for i in range(offset + ELEMENTS_OFFSET, offset + ELEMENTS_OFFSET + length):
-            target_heap.add(self._heap[i])
+        for i in range(offset + VECTOR_ELEMENTS_OFFSET, offset + VECTOR_ELEMENTS_OFFSET + length):
+            target_heap.add(self._store[i])
         return result
 
     def add(self, value: Word):
-        self._heap[self._tip] = value
+        self._store[self._tip] = value
         self._tip += 1
 
 class GarbageCollector:
+    """
+    This class is responsible for performing garbage collection. It is given
+    privileged access to the registers, value stack and heap of the machine.
+    """
 
-    def __init__(self, registers, value_stack, heap, gctrace):
-        self._registers = registers
-        self._value_stack = value_stack
-        self._heap = heap
-        self._new_heap = heap.newHeap()
+    def __init__(self, machine, gctrace):
+        self._registers = machine._Machine__registers
+        self._value_stack = machine._Machine__value_stack
+        self._heap = machine._Machine__heap
+        self._new_heap = self._heap.newHeap()
         self._gctrace = gctrace
 
     def gctrace(self):
@@ -194,7 +214,7 @@ class GarbageCollector:
         for i, x in enumerate(self._value_stack):
             self._value_stack[i] = self.forwardIfPointer(x)
 
-    def forwardIfPointer(self, value):
+    def forwardIfPointer(self, value: Word):
         if not isinstance(value, Pointer):
             return value
         
@@ -210,8 +230,8 @@ class GarbageCollector:
             self._gctrace.logForwardObject(pointer, new_pointer)
             return pointer.update(new_pointer)
 
-    def collectGarbage(self):
-        with self._gctrace("GARBAGE COLLECTION"):
+    def collectGarbage(self, message):
+        with self._gctrace(f"GARBAGE COLLECTION: {message}"):
             with self._gctrace("INITIAL PHASE: Visit roots"):
                 self._visitRegisters()
                 self._visitValueStack()
@@ -225,68 +245,80 @@ class GarbageCollector:
 class Machine:
 
     def __init__(self, gctrace: GCEventLogger | Null):
-        self._registers = {}
-        self._heap = Heap(100)
-        self._value_stack = []
+        self.__registers: Dict[str, Word] = {}
+        self.__heap: Heap = Heap(100)
+        self.__value_stack: List[Word] = []
         self._gctrace = gctrace
 
     def garbageCollect(self, msg):
-        self._heap = GarbageCollector(self._registers, self._value_stack, self._heap, self._gctrace).collectGarbage()
+        self.__heap = GarbageCollector(self, self._gctrace).collectGarbage(msg)
 
     def show(self, msg):
         print(f"Machine state: {msg}")
         print("  Registers")
-        for k, v in self._registers.items():
+        for k, v in self.__registers.items():
             print(f"    {k}: {v}")
         print("  Stack (top to bottom)")
-        for i in reversed(range(len(self._value_stack))):
-            print(f"    {i}: {self._value_stack[i]}")
-        self._heap.show()
+        for i in reversed(range(len(self.__value_stack))):
+            print(f"    {i}: {self.__value_stack[i]}")
+        self.__heap.show()
         print()
 
     def LOAD(self, register, value):
-        self._registers[register] = Data(value)
+        self.__registers[register] = Data(value)
 
     def PUSH(self, register):
-        self._value_stack.append(self._registers[register])
+        self.__value_stack.append(self.__registers[register])
+
+    def PUSH_DATA(self, value):
+        self.__value_stack.append(Data(value))
 
     def POP(self, register):
-        self._registers[register] = self._value_stack.pop()
+        self.__registers[register] = self.__value_stack.pop()
 
     def STACK_LENGTH(self, register):
-        self._registers[register] = Data(len(self._value_stack))
+        print('STACK LENGTH', len(self.__value_stack))
+        self.__registers[register] = Data(len(self.__value_stack))
 
     def STACK_DELTA(self, register):
-        n = len(self._value_stack) - self._registers[register].value()
-        self._registers[register] = Data(n)
+        print('STACK DELTA', len(self.__value_stack))
+        n = len(self.__value_stack) - self.__registers[register].value()
+        self.__registers[register] = Data(n)
 
-    def NEW_OBJECT(self, len_register, obj_register, try_gc=True):
+    def _new_object(self, length, obj_register, try_gc=True):
         try:
-            length = self._registers[len_register].value()
-            self._registers[obj_register] = self._heap.newObject(length, self._value_stack)
-        except GarbageCollectionNeededException:
+            self.__registers[obj_register] = self.__heap.newObject(length, self.__value_stack)
+        except GarbageCollectionNeededException as exc:
             if try_gc:
                 self.garbageCollect("Automatic GC")
-                self.NEW_OBJECT(len_register, obj_register, try_gc=False) 
+                self._new_object(length, obj_register, try_gc=False)
             else:
-                raise OurException("Out of memory")
+                raise OurException("Out of memory") from exc
+
+    def NEW_OBJECT(self, len_register, obj_register, try_gc=True):
+        length = self.__registers[len_register].value()
+        self._new_object(length, obj_register, try_gc)
+            
+    def NEW_OBJECT_DELTA(self, length_register, obj_register, try_gc=True):
+        length = len(self.__value_stack) - self.__registers[length_register].value()
+        self._new_object(length, obj_register, try_gc)
 
     def LENGTH(self, obj_register, len_register):
-        self._registers[len_register] = self._heap.get(self._registers[obj_register].offset() + 1)
+        self.__registers[len_register] = self.__heap.get(self.__registers[obj_register].offset() + VECTOR_LENGTH_OFFSET)
 
     def EXPLODE(self, obj_register):
-        self._heap.explode(self._registers[obj_register], self._value_stack)
+        self.__heap.explode(self.__registers[obj_register], self.__value_stack)
 
     def FIELD(self, obj_register, index, value_register):
-        length = self._heap.get(self._registers[obj_register].offset() + LENGTH_OFFSET).value()
+        length = self.__heap.get(self.__registers[obj_register].offset() + VECTOR_LENGTH_OFFSET).value()
         if index < 0 or index >= length:
             raise OurException("Index out of range")
-        offset = self._registers[obj_register].offset() + ELEMENTS_OFFSET + index
-        self._registers[value_register] = self._heap.get(offset)
+        offset = self.__registers[obj_register].offset() + VECTOR_ELEMENTS_OFFSET + index
+        self.__registers[value_register] = self.__heap.get(offset)
 
     def CLONE(self, obj_register, clone_register, try_gc=True):
         try:
-            self._registers[clone_register] = self._heap.clone(self._registers[obj_register])
+            self.__registers[clone_register] = self.__heap.clone(self.__registers[obj_register])
         except GarbageCollectionNeededException:
             if try_gc:
                 self.garbageCollect("Automatic GC")
@@ -294,59 +326,3 @@ class Machine:
             else:
                 raise OurException("Out of memory")
 
-def scenario1(mc):
-    mc.LOAD('A', 10)
-    mc.LOAD('B', 20)
-    mc.LOAD('C', 30)
-    mc.PUSH('A')
-    mc.STACK_LENGTH('L')
-    mc.PUSH('A')
-    mc.PUSH('B')
-    mc.PUSH('C')
-    mc.STACK_DELTA('L')
-    mc.show("Before")
-    mc.NEW_OBJECT('L', 'R')
-    mc.show("After")
-    mc.STACK_LENGTH('L')
-    mc.CLONE('R', 'R')
-    mc.show("Clone")
-    mc.PUSH('R')
-    mc.PUSH('R')
-    mc.STACK_DELTA('L')
-    mc.NEW_OBJECT('L', 'R')
-    mc.show("Finally")
-    mc.garbageCollect("Manual GC")
-    mc.show("After GC")
-
-def scenario2(mc):
-    mc.STACK_LENGTH('L')
-    mc.LOAD('A', 11)
-    mc.PUSH('A')
-    mc.LOAD('A', 22)
-    mc.PUSH('A')
-    mc.LOAD('A', 33)
-    mc.PUSH('A')
-    mc.STACK_DELTA('L')
-    mc.NEW_OBJECT('L', 'R')
-    for i in range(60):
-        mc.CLONE('R', 'R')
-    mc.show("Before GC")
-    mc.garbageCollect("Manual GC")
-    mc.show("After GC")
-
-SCENARIOS = [scenario1, scenario2]
-
-def main():
-    argparser = argparse.ArgumentParser(description="Cheney-style garbage collector")
-    argparser.add_argument("--scenario", type=int, default=1, help="Scenario to run")
-    argparser.add_argument("--gctrace", action='store_true', help="Trace the garbage collection process")
-    args = argparser.parse_args()
-    gctrace = GCEventLogger() if args.gctrace else Null()
-    try:
-        scenario = SCENARIOS[args.scenario - 1]
-        scenario(Machine(gctrace))
-    except IndexError:
-        print("Invalid scenario selected")
-
-if __name__ == "__main__":
-    main()
