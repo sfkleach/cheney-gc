@@ -27,7 +27,7 @@ def scenario0(mc):
     mc.show("After")
 
 @Scenario()
-def scenario1(mc):
+def scenario10(mc):
     """Scenario with a single object and no garbage.
     """
     mc.STACK_LENGTH('L')
@@ -44,7 +44,7 @@ def scenario1(mc):
     mc.show("After GC")
 
 @Scenario()
-def scenario2(mc):
+def scenario20(mc):
     """Scenario with a pair of objects.
     """
     mc.STACK_LENGTH('L')
@@ -65,7 +65,7 @@ def scenario2(mc):
     mc.show("After GC")
 
 @Scenario()
-def scenario10(mc):
+def scenario30(mc):
     """Scenario with a single object that is repeatedly cloned to 
     create a large number of unreachable objects. These objects are
     then garbage collected.
@@ -83,7 +83,7 @@ def scenario10(mc):
     mc.show("After GC")
 
 @Scenario()
-def scenario20(mc):
+def scenario40(mc):
     """Scenario with a large chain of objects. The root object has a single
     child, which has a single child, and so on.
     """
@@ -99,7 +99,7 @@ def scenario20(mc):
     mc.show("After GC")
 
 @Scenario()
-def scenario30(mc):
+def scenario50(mc):
     """Scenario with a diamond shaped object graph. The root object
     has two children, each of which has a single child. 
     """
@@ -129,7 +129,7 @@ def scenario30(mc):
     mc.show('After GC')
 
 @Scenario()
-def scenario31(mc):
+def scenario60(mc):
     """Scenario with a mixture of store that is unreachable, reachable and 
     shared.
     """
@@ -151,7 +151,7 @@ def scenario31(mc):
     mc.show("After GC")
 
 @Scenario()
-def scenario40(mc):
+def scenario70(mc):
     """Scenario with two vectors that point to each other. A reference counting
     strategy could not collect these objects.
     """
