@@ -150,6 +150,26 @@ def scenario31(mc):
     mc.garbageCollect("Manual GC")
     mc.show("After GC")
 
+@Scenario()
+def scenario40(mc):
+    """Scenario with two vectors that point to each other. A reference counting
+    strategy could not collect these objects.
+    """
+    mc.STACK_LENGTH('L')
+    mc.PUSH_DATA(555)
+    mc.PUSH_DATA(-1)    # Placeholder for the second vector.
+    mc.NEW_OBJECT_DELTA('L', 'Vector1')
+    mc.STACK_LENGTH('L')
+    mc.PUSH_DATA(666)
+    mc.PUSH('Vector1')
+    mc.NEW_OBJECT_DELTA('L', 'Vector2')
+    mc.SET_FIELD('Vector1', 1, 'Vector2')
+    mc.LOAD('Vector1', -1)
+    mc.LOAD('Vector2', -1)
+    mc.show("Before GC")
+    mc.garbageCollect("Manual GC")
+    mc.show("After GC")
+
 def list_scenarios():
     print("Available scenarios:")
     for name in sorted(SCENARIOS.keys(), key=lambda x: int(x) if x.isdigit() else x):
@@ -169,10 +189,10 @@ def main():
         list_scenarios()
     else:
         gctrace = GCEventLogger()
-        try:
+        if args.scenario in SCENARIOS:
             scenario = SCENARIOS[args.scenario]
             scenario(Machine(gctrace))
-        except KeyError:
+        else:
             print(f"Invalid scenario '{args.scenario}' selected.")
             print()
             list_scenarios()

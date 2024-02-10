@@ -309,12 +309,20 @@ class Machine:
     def EXPLODE(self, obj_register):
         self.__heap.explode(self.__registers[obj_register], self.__value_stack)
 
-    def FIELD(self, obj_register, index, value_register):
+    def FIELD(self, target_register, obj_register, index ):
         length = self.__heap.get(self.__registers[obj_register].offset() + VECTOR_LENGTH_OFFSET).value()
         if index < 0 or index >= length:
             raise OurException("Index out of range")
         offset = self.__registers[obj_register].offset() + VECTOR_ELEMENTS_OFFSET + index
-        self.__registers[value_register] = self.__heap.get(offset)
+        self.__registers[target_register] = self.__heap.get(offset)
+
+    def SET_FIELD(self, obj_register, index, value_register):
+        length = self.__heap.get(self.__registers[obj_register].offset() + VECTOR_LENGTH_OFFSET).value()
+        if index < 0 or index >= length:
+            raise OurException("Index out of range")
+        offset = self.__registers[obj_register].offset() + VECTOR_ELEMENTS_OFFSET + index
+        print('OFFSET', offset)
+        self.__heap.put(offset, self.__registers[value_register])
 
     def CLONE(self, obj_register, clone_register, try_gc=True):
         try:
