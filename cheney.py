@@ -1,25 +1,26 @@
 import argparse
 from typing import Callable, Dict
+import re
 
-from null import Null
 from gceventlogger import GCEventLogger
 from machine import Machine
 
 SCENARIOS: Dict[str, Callable[[Machine], None]] = {}
 
 def Scenario():
-    """
-    Decorator to register a function as a scenario. The function name is used 
+    """Decorator to register a function as a scenario. The function name is used 
     as the scenario name.
     """
     def decorator(func):
-        SCENARIOS[func.__name__] = func
+        short_name = re.sub("scenario_?", "", func.__name__)
+        SCENARIOS[short_name] = func
         return func
     return decorator
 
 @Scenario()
 def scenario0(mc):
-    """Trivial scenario where the garbage collector is called before any allocation."""
+    """Trivial scenario where the garbage collector is called before any allocation.
+    """
     mc.LOAD('A', 10)  # Load a value into a register so it will show up in the output.  
     mc.show("Before")
     mc.garbageCollect("Manual GC")
@@ -27,7 +28,8 @@ def scenario0(mc):
 
 @Scenario()
 def scenario1(mc):
-    """Scenario with a single object and no garbage"""
+    """Scenario with a single object and no garbage.
+    """
     mc.STACK_LENGTH('L')
     mc.LOAD('A', 11)
     mc.PUSH('A')
@@ -43,7 +45,8 @@ def scenario1(mc):
 
 @Scenario()
 def scenario2(mc):
-    """Scenario with a pair of objects."""
+    """Scenario with a pair of objects.
+    """
     mc.STACK_LENGTH('L')
     mc.PUSH_DATA(10)
     mc.PUSH_DATA(11)
@@ -127,6 +130,9 @@ def scenario30(mc):
 
 @Scenario()
 def scenario31(mc):
+    """Scenario with a mixture of store that is unreachable, reachable and 
+    shared.
+    """
     mc.LOAD('A', 10)
     mc.LOAD('B', 20)
     mc.LOAD('C', 30)
@@ -144,27 +150,32 @@ def scenario31(mc):
     mc.garbageCollect("Manual GC")
     mc.show("After GC")
 
-@Scenario()
-def scenario100(mc):
-    mc.LOAD('L', 3)
-    mc.PUSH_DATA(10)
-    mc.PUSH_DATA(11)
-    mc.PUSH_DATA(12)
-    mc.NEW_OBJECT('L', 'R')
-    mc.LENGTH('R', 'Length')
-    mc.show("Check Length")
+def list_scenarios():
+    print("Available scenarios:")
+    for name in sorted(SCENARIOS.keys(), key=lambda x: int(x) if x.isdigit() else x):
+        print(f" --scenario={name}")
+        doc = SCENARIOS[name].__doc__
+        if doc:
+            print(f"   {doc}")
+        else:
+            print()
 
 def main():
     argparser = argparse.ArgumentParser(description="Cheney-style garbage collector")
-    argparser.add_argument("--scenario", type=int, default=1, help="Scenario to run")
-    argparser.add_argument("--gctrace", action='store_true', help="Trace the garbage collection process")
+    argparser.add_argument("--scenario", default='0', help="Scenario to run")
+    argparser.add_argument("--list", action='store_true', help="List the available scenarios")
     args = argparser.parse_args()
-    gctrace = GCEventLogger() if args.gctrace else Null()
-    try:
-        scenario = SCENARIOS["scenario" + str(args.scenario)]
-        scenario(Machine(gctrace))
-    except IndexError:
-        print("Invalid scenario selected")
+    if args.list:
+        list_scenarios()
+    else:
+        gctrace = GCEventLogger()
+        try:
+            scenario = SCENARIOS[args.scenario]
+            scenario(Machine(gctrace))
+        except KeyError:
+            print(f"Invalid scenario '{args.scenario}' selected.")
+            print()
+            list_scenarios()
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,7 @@
 class Null:
     """
-    Null objects ignore all operations with no side effects.
+    Null objects ignore all operations with no side effects. Not used in 
+    this stripped down version of the code.
     """
 
     def __getattr__(self, name):
