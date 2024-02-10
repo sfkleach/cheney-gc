@@ -319,10 +319,9 @@ class Machine:
     def CLONE(self, obj_register, clone_register, try_gc=True):
         try:
             self.__registers[clone_register] = self.__heap.clone(self.__registers[obj_register])
-        except GarbageCollectionNeededException:
+        except GarbageCollectionNeededException as exc:
             if try_gc:
                 self.garbageCollect("Automatic GC")
                 self.CLONE(obj_register, clone_register, try_gc=False)
             else:
-                raise OurException("Out of memory")
-
+                raise OurException("Out of memory") from exc
