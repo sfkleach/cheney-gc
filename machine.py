@@ -277,11 +277,11 @@ class Machine:
         self.__registers[register] = self.__value_stack.pop()
 
     def STACK_LENGTH(self, register):
-        print('STACK LENGTH', len(self.__value_stack))
+        # print('STACK LENGTH', len(self.__value_stack))
         self.__registers[register] = Data(len(self.__value_stack))
 
     def STACK_DELTA(self, register):
-        print('STACK DELTA', len(self.__value_stack))
+        # print('STACK DELTA', len(self.__value_stack))
         n = len(self.__value_stack) - self.__registers[register].value()
         self.__registers[register] = Data(n)
 
