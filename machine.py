@@ -2,8 +2,8 @@
 This is small program to demonstrate how Cheney-style garbage collection works.
 It employs a simple abstract machine to help visualize the process.
 
-The machine has a set of registers which are referenced by name. Each register 
-holds a 64-bit word, modelled here as a Word. 
+The machine has a set of registers which are referenced by name. Each register
+holds a 64-bit word, modelled here as a Word.
 
 The machine also has a value stack which is used to store values. The stack
 is modelled as a list of Values.
@@ -28,7 +28,7 @@ class GarbageCollectionNeededException(Exception):
 class Word:
     """
     This is the base class for all values in the machine. It is intended to
-    represent a 64-bit word value. And it is used to represent both pointers and 
+    represent a 64-bit word value. And it is used to represent both pointers and
     data. In practice a few bits would need to be reserved to distinguish between
     pointers and data, but this is not implemented here.
     """
@@ -36,7 +36,7 @@ class Word:
 
 class Pointer( Word ):
     """
-    This class mimicks a 64-bit pointer aligned on an 8-byte boundary. It is 
+    This class mimicks a 64-bit pointer aligned on an 8-byte boundary. It is
     used to represent a pointer to a location in the heap.
 
     IMPORTANT: Pointers may only point to the starting location of
@@ -50,10 +50,10 @@ class Pointer( Word ):
 
     def isInHeap(self, heap):
         return self._heap is heap
-    
+
     def dereference(self) -> Word:
         return self._heap.get(self._offset)
-    
+
     def update(self, new_value: Word):
         return self._heap.put(self._offset, new_value)
 
@@ -89,10 +89,10 @@ class Data( Word ):
 #
 #     DATA a sequence of values that represent the data of the object.
 #         These start at an offset of 1 from the start of the object. The nth
-#         element of the vector is at an offset of n + 1 from the start of the 
+#         element of the vector is at an offset of n + 1 from the start of the
 #         object.
 #
-# These constants simplify evolving this package into a more complicated model.        
+# These constants simplify evolving this package into a more complicated model.
 
 VECTOR_LENGTH_OFFSET = 0
 VECTOR_ELEMENTS_OFFSET = 1
@@ -112,7 +112,7 @@ class Heap:
 
     def get(self, offset):
         return self._store[offset]
-    
+
     def put(self, offset, value):
         self._store[offset] = value
         return value
@@ -148,7 +148,7 @@ class Heap:
     def checkCapacity(self, length):
         if self._tip + length > len(self._store):
             raise GarbageCollectionNeededException()
-        
+
     def pointer(self, offset):
         return Pointer(self, offset)
 
@@ -217,7 +217,7 @@ class GarbageCollector:
     def forwardIfPointer(self, value: Word):
         if not isinstance(value, Pointer):
             return value
-        
+
         pointer: Pointer = value
         p = pointer.dereference()
         if isinstance(p, Pointer) and p.isInHeap(self._new_heap):
@@ -298,7 +298,7 @@ class Machine:
     def NEW_OBJECT(self, len_register, obj_register, try_gc=True):
         length = self.__registers[len_register].value()
         self._new_object(length, obj_register, try_gc)
-            
+
     def NEW_OBJECT_DELTA(self, length_register, obj_register, try_gc=True):
         length = len(self.__value_stack) - self.__registers[length_register].value()
         self._new_object(length, obj_register, try_gc)
@@ -322,7 +322,7 @@ class Machine:
         except GarbageCollectionNeededException:
             if try_gc:
                 self.garbageCollect("Automatic GC")
-                self.CLONE(obj_register, clone_register, try_gc=False) 
+                self.CLONE(obj_register, clone_register, try_gc=False)
             else:
                 raise OurException("Out of memory")
 
