@@ -21,7 +21,7 @@ def Scenario():
 def scenario0(mc):
     """Trivial scenario where the garbage collector is called before any allocation.
     """
-    mc.LOAD('A', 10)  # Load a value into a register so it will show up in the output.  
+    mc.LOAD_DATA('A', 10)  # Load a value into a register so it will show up in the output.  
     mc.show("Before")
     mc.garbageCollect("Manual GC")
     mc.show("After")
@@ -31,11 +31,11 @@ def scenario10(mc):
     """Scenario with a single object and no garbage.
     """
     mc.STACK_LENGTH('L')
-    mc.LOAD('A', 11)
+    mc.LOAD_DATA('A', 11)
     mc.PUSH('A')
-    mc.LOAD('A', 22)
+    mc.LOAD_DATA('A', 22)
     mc.PUSH('A')
-    mc.LOAD('A', 33)
+    mc.LOAD_DATA('A', 33)
     mc.PUSH('A')
     mc.STACK_DELTA('L')
     mc.NEW_VECTOR('T', 'L')
@@ -86,9 +86,9 @@ def scenario40(mc):
     """Scenario with a large chain of objects. The root object has a single
     child, which has a single child, and so on.
     """
-    mc.LOAD('L', 0)
+    mc.LOAD_DATA('L', 0)
     mc.NEW_VECTOR('CHAIN', 'L')
-    mc.LOAD('L', 2)
+    mc.LOAD_DATA('L', 2)
     for i in range(10):
         mc.PUSH_DATA(i)
         mc.PUSH('CHAIN')
@@ -120,9 +120,9 @@ def scenario50(mc):
     mc.PUSH('Child1')
     mc.PUSH('Child2')
     mc.NEW_VECTOR_DELTA('Root', 'L')
-    mc.LOAD('SharedGrandChild', -1)
-    mc.LOAD('Child1', -1)
-    mc.LOAD('Child2', -1)
+    mc.LOAD_DATA('SharedGrandChild', -1)
+    mc.LOAD_DATA('Child1', -1)
+    mc.LOAD_DATA('Child2', -1)
     mc.show('Before GC')
     mc.garbageCollect('Manual GC')
     mc.show('After GC')
@@ -132,9 +132,9 @@ def scenario60(mc):
     """Scenario with a mixture of store that is unreachable, reachable and 
     shared.
     """
-    mc.LOAD('A', 10)
-    mc.LOAD('B', 20)
-    mc.LOAD('C', 30)
+    mc.LOAD_DATA('A', 10)
+    mc.LOAD_DATA('B', 20)
+    mc.LOAD_DATA('C', 30)
     mc.STACK_LENGTH('L')
     mc.PUSH('A')
     mc.PUSH('B')
@@ -163,8 +163,8 @@ def scenario70(mc):
     mc.PUSH('Vector1')
     mc.NEW_VECTOR_DELTA('Vector2', 'L')
     mc.SET_FIELD('Vector1', 1, 'Vector2')
-    mc.LOAD('Vector1', -1)
-    mc.LOAD('Vector2', -1)
+    mc.LOAD_DATA('Vector1', -1)
+    mc.LOAD_DATA('Vector2', -1)
     mc.show("Before GC")
     mc.garbageCollect("Manual GC")
     mc.show("After GC")

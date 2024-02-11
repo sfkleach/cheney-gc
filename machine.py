@@ -264,28 +264,26 @@ class Machine:
         self.__heap.show()
         print()
 
-    def LOAD(self, target_register, value):
+    def LOAD_DATA(self, target_register: str, value: int):
         self.__registers[target_register] = Data(value)
 
-    def PUSH(self, source_register):
+    def PUSH(self, source_register: str):
         self.__value_stack.append(self.__registers[source_register])
 
-    def PUSH_DATA(self, value):
+    def PUSH_DATA(self, value: int):
         self.__value_stack.append(Data(value))
 
-    def POP(self, target_register):
+    def POP(self, target_register: str):
         self.__registers[target_register] = self.__value_stack.pop()
 
-    def STACK_LENGTH(self, target_register):
-        # print('STACK LENGTH', len(self.__value_stack))
+    def STACK_LENGTH(self, target_register: str):
         self.__registers[target_register] = Data(len(self.__value_stack))
 
-    def STACK_DELTA(self, register):
-        # print('STACK DELTA', len(self.__value_stack))
+    def STACK_DELTA(self, register: str):
         n = len(self.__value_stack) - self.__registers[register].value()
         self.__registers[register] = Data(n)
 
-    def new_vector(self, target_register, length, try_gc=True):
+    def new_vector(self, target_register: str, length: int, try_gc=True):
         try:
             self.__registers[target_register] = self.__heap.newObject(length, self.__value_stack)
         except GarbageCollectionNeededException as exc:
@@ -295,28 +293,28 @@ class Machine:
             else:
                 raise OurException("Out of memory") from exc
 
-    def NEW_VECTOR(self, target_register, len_register, try_gc=True):
+    def NEW_VECTOR(self, target_register: str, len_register: str, try_gc=True):
         length = self.__registers[len_register].value()
         self.new_vector(target_register, length, try_gc)
 
-    def NEW_VECTOR_DELTA(self, target_register, length_register, try_gc=True):
+    def NEW_VECTOR_DELTA(self, target_register: str, length_register: str, try_gc=True):
         length = len(self.__value_stack) - self.__registers[length_register].value()
         self.new_vector(target_register, length, try_gc)
 
-    def LENGTH(self, target_register, vector_register ):
+    def LENGTH(self, target_register: str, vector_register: str):
         self.__registers[target_register] = self.__heap.get(self.__registers[vector_register].offset() + VECTOR_LENGTH_OFFSET)
 
-    def EXPLODE(self, target_register):
-        self.__heap.explode(self.__registers[target_register], self.__value_stack)
+    def EXPLODE(self, vector_register: str):
+        self.__heap.explode(self.__registers[vector_register], self.__value_stack)
 
-    def FIELD(self, target_register, vector_register, index ):
+    def FIELD(self, target_register: str, vector_register: str, index: int ):
         length = self.__heap.get(self.__registers[vector_register].offset() + VECTOR_LENGTH_OFFSET).value()
         if index < 0 or index >= length:
             raise OurException("Index out of range")
         offset = self.__registers[vector_register].offset() + VECTOR_ELEMENTS_OFFSET + index
         self.__registers[target_register] = self.__heap.get(offset)
 
-    def SET_FIELD(self, target_register, index, value_register):
+    def SET_FIELD(self, target_register: str, index: int, value_register: str):
         length = self.__heap.get(self.__registers[target_register].offset() + VECTOR_LENGTH_OFFSET).value()
         if index < 0 or index >= length:
             raise OurException("Index out of range")
@@ -324,12 +322,15 @@ class Machine:
         print('OFFSET', offset)
         self.__heap.put(offset, self.__registers[value_register])
 
-    def CLONE(self, target_register, obj_register, try_gc=True):
+    def _clone(self, target_register: str, obj_register: str, try_gc):
         try:
             self.__registers[target_register] = self.__heap.clone(self.__registers[obj_register])
         except GarbageCollectionNeededException as exc:
             if try_gc:
                 self.garbageCollect("Automatic GC")
-                self.CLONE(target_register, obj_register, try_gc=False)
+                self._clone(target_register, obj_register, False)
             else:
                 raise OurException("Out of memory") from exc
+            
+    def CLONE(self, target_register: str, obj_register: str):
+        self._clone(target_register, obj_register, True)
