@@ -55,7 +55,7 @@ def scenario20(mc):
     mc.STACK_LENGTH('L')
     mc.PUSH_DATA(1)
     mc.PUSH_DATA(2)
-    mc.PUSH_DATA(2)
+    mc.PUSH_DATA(3)
     mc.PUSH('T')
     mc.STACK_DELTA('L')
     mc.NEW_VECTOR('T', 'L')
@@ -103,7 +103,7 @@ def scenario50(mc):
     has two children, each of which has a single child. 
     """
     mc.STACK_LENGTH('L')
-    mc.PUSH_DATA(100)
+    mc.PUSH_DATA(101)
     mc.PUSH_DATA(102)
     mc.PUSH_DATA(103)
     mc.NEW_VECTOR_DELTA('SharedGrandChild', 'L')
@@ -112,7 +112,7 @@ def scenario50(mc):
     mc.PUSH('SharedGrandChild')
     mc.NEW_VECTOR_DELTA('Child1', 'L')
     mc.STACK_LENGTH('L')
-    mc.PUSH_DATA(20)
+    mc.PUSH_DATA(11)
     mc.PUSH('SharedGrandChild')
     mc.NEW_VECTOR_DELTA('Child2', 'L')
     mc.STACK_LENGTH('L')
@@ -129,6 +129,26 @@ def scenario50(mc):
 
 @Scenario()
 def scenario60(mc):
+    """Scenario with two vectors that point to each other. A reference counting
+    strategy cannot collect these objects.
+    """
+    mc.STACK_LENGTH('L')
+    mc.PUSH_DATA(555)
+    mc.PUSH_DATA(-1)    # Placeholder for the second vector.
+    mc.NEW_VECTOR_DELTA('Vector1', 'L')
+    mc.STACK_LENGTH('L')
+    mc.PUSH_DATA(666)
+    mc.PUSH('Vector1')
+    mc.NEW_VECTOR_DELTA('Vector2', 'L')
+    mc.SET_FIELD('Vector1', 1, 'Vector2')
+    mc.LOAD_DATA('Vector1', -1)
+    mc.LOAD_DATA('Vector2', -1)
+    mc.show("Before GC")
+    mc.garbageCollect("Manual GC")
+    mc.show("After GC")
+
+@Scenario()
+def scenario100(mc):
     """Scenario with a mixture of store that is unreachable, reachable and 
     shared.
     """
@@ -145,26 +165,6 @@ def scenario60(mc):
     mc.PUSH('T')
     mc.PUSH('T')
     mc.NEW_VECTOR_DELTA('T', 'L')
-    mc.show("Before GC")
-    mc.garbageCollect("Manual GC")
-    mc.show("After GC")
-
-@Scenario()
-def scenario70(mc):
-    """Scenario with two vectors that point to each other. A reference counting
-    strategy cannot collect these objects.
-    """
-    mc.STACK_LENGTH('L')
-    mc.PUSH_DATA(555)
-    mc.PUSH_DATA(-1)    # Placeholder for the second vector.
-    mc.NEW_VECTOR_DELTA('Vector1', 'L')
-    mc.STACK_LENGTH('L')
-    mc.PUSH_DATA(666)
-    mc.PUSH('Vector1')
-    mc.NEW_VECTOR_DELTA('Vector2', 'L')
-    mc.SET_FIELD('Vector1', 1, 'Vector2')
-    mc.LOAD_DATA('Vector1', -1)
-    mc.LOAD_DATA('Vector2', -1)
     mc.show("Before GC")
     mc.garbageCollect("Manual GC")
     mc.show("After GC")
