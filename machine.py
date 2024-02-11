@@ -264,63 +264,63 @@ class Machine:
         self.__heap.show()
         print()
 
-    def LOAD(self, register, value):
-        self.__registers[register] = Data(value)
+    def LOAD(self, target_register, value):
+        self.__registers[target_register] = Data(value)
 
-    def PUSH(self, register):
-        self.__value_stack.append(self.__registers[register])
+    def PUSH(self, source_register):
+        self.__value_stack.append(self.__registers[source_register])
 
     def PUSH_DATA(self, value):
         self.__value_stack.append(Data(value))
 
-    def POP(self, register):
-        self.__registers[register] = self.__value_stack.pop()
+    def POP(self, target_register):
+        self.__registers[target_register] = self.__value_stack.pop()
 
-    def STACK_LENGTH(self, register):
+    def STACK_LENGTH(self, target_register):
         # print('STACK LENGTH', len(self.__value_stack))
-        self.__registers[register] = Data(len(self.__value_stack))
+        self.__registers[target_register] = Data(len(self.__value_stack))
 
     def STACK_DELTA(self, register):
         # print('STACK DELTA', len(self.__value_stack))
         n = len(self.__value_stack) - self.__registers[register].value()
         self.__registers[register] = Data(n)
 
-    def _new_object(self, length, obj_register, try_gc=True):
+    def new_vector(self, target_register, length, try_gc=True):
         try:
-            self.__registers[obj_register] = self.__heap.newObject(length, self.__value_stack)
+            self.__registers[target_register] = self.__heap.newObject(length, self.__value_stack)
         except GarbageCollectionNeededException as exc:
             if try_gc:
                 self.garbageCollect("Automatic GC")
-                self._new_object(length, obj_register, try_gc=False)
+                self.new_vector(target_register, length, try_gc=False)
             else:
                 raise OurException("Out of memory") from exc
 
-    def NEW_OBJECT(self, len_register, obj_register, try_gc=True):
+    def NEW_VECTOR(self, target_register, len_register, try_gc=True):
         length = self.__registers[len_register].value()
-        self._new_object(length, obj_register, try_gc)
+        self.new_vector(target_register, length, try_gc)
 
-    def NEW_OBJECT_DELTA(self, length_register, obj_register, try_gc=True):
+    def NEW_VECTOR_DELTA(self, target_register, length_register, try_gc=True):
         length = len(self.__value_stack) - self.__registers[length_register].value()
-        self._new_object(length, obj_register, try_gc)
+        self.new_vector(target_register, length, try_gc)
 
-    def LENGTH(self, obj_register, len_register):
-        self.__registers[len_register] = self.__heap.get(self.__registers[obj_register].offset() + VECTOR_LENGTH_OFFSET)
+    def LENGTH(self, target_register, vector_register ):
+        self.__registers[target_register] = self.__heap.get(self.__registers[vector_register].offset() + VECTOR_LENGTH_OFFSET)
 
-    def EXPLODE(self, obj_register):
-        self.__heap.explode(self.__registers[obj_register], self.__value_stack)
+    def EXPLODE(self, target_register):
+        self.__heap.explode(self.__registers[target_register], self.__value_stack)
 
-    def FIELD(self, target_register, obj_register, index ):
-        length = self.__heap.get(self.__registers[obj_register].offset() + VECTOR_LENGTH_OFFSET).value()
+    def FIELD(self, target_register, vector_register, index ):
+        length = self.__heap.get(self.__registers[vector_register].offset() + VECTOR_LENGTH_OFFSET).value()
         if index < 0 or index >= length:
             raise OurException("Index out of range")
-        offset = self.__registers[obj_register].offset() + VECTOR_ELEMENTS_OFFSET + index
+        offset = self.__registers[vector_register].offset() + VECTOR_ELEMENTS_OFFSET + index
         self.__registers[target_register] = self.__heap.get(offset)
 
-    def SET_FIELD(self, obj_register, index, value_register):
-        length = self.__heap.get(self.__registers[obj_register].offset() + VECTOR_LENGTH_OFFSET).value()
+    def SET_FIELD(self, target_register, index, value_register):
+        length = self.__heap.get(self.__registers[target_register].offset() + VECTOR_LENGTH_OFFSET).value()
         if index < 0 or index >= length:
             raise OurException("Index out of range")
-        offset = self.__registers[obj_register].offset() + VECTOR_ELEMENTS_OFFSET + index
+        offset = self.__registers[target_register].offset() + VECTOR_ELEMENTS_OFFSET + index
         print('OFFSET', offset)
         self.__heap.put(offset, self.__registers[value_register])
 
