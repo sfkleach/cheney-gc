@@ -118,6 +118,11 @@ class Heap:
         return value
 
     def gcScanNextObject(self, gc):
+        """Part of the Cheney-style garbage collection algorithm. This is the
+        scanning phase. It scans the next object in the scan queue and forwards
+        any pointers it contains. It returns True if there are more objects to
+        scan, and False if the scan queue is empty.
+        """
         gctrace = gc.gctrace()
         ok = self._scan_queue < self._tip
         if ok:
@@ -202,7 +207,7 @@ class GarbageCollector:
         self._gctrace = gctrace
 
     def gctrace(self):
-        return self._gctrace
+        return self._gctrace 
 
     def _visitRegisters(self):
         for k, v in self._registers.items():
@@ -232,14 +237,20 @@ class GarbageCollector:
 
     def collectGarbage(self, message):
         with self._gctrace(f"GARBAGE COLLECTION: {message}"):
-            with self._gctrace("INITIAL PHASE: Visit roots"):
-                self._visitRegisters()
-                self._visitValueStack()
-            with self._gctrace("MAIN PHASE: Scanning objects in the scan-queue (new-heap)"):
-                while self._new_heap.gcScanNextObject(self):
-                    pass
+            self._phase1()
+            self._phase2()
         self._gctrace.logFinish()
         return self._new_heap
+    
+    def _phase1(self):
+        with self._gctrace("INITIAL PHASE: Visit roots"):
+            self._visitRegisters()
+            self._visitValueStack()
+
+    def _phase2(self):
+        with self._gctrace("MAIN PHASE: Scanning objects in the scan-queue (new-heap)"):
+            while self._new_heap.gcScanNextObject(self):
+                pass        
 
 
 class Machine:
